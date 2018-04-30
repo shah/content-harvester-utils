@@ -59,6 +59,33 @@ func (r *HarvestedResource) DestinationContentType() string {
 // TODO create Key() and Hash() funcs that will give a key (finalURL) and hash
 // for checking against duplicates
 
+func cleanResource(url *url.URL, rule CleanDiscoveredResourceRule) (bool, *url.URL) {
+	if !rule.CleanDiscoveredResource(url) {
+		return false, url
+	}
+
+	harvestedParams := url.Query()
+	type ParamMatch struct {
+		paramName string
+		reason    string
+	}
+	var cleanedParams []ParamMatch
+	for paramName := range harvestedParams {
+		remove, reason := rule.RemoveQueryParamFromResource(paramName)
+		if remove {
+			harvestedParams.Del(paramName)
+			cleanedParams = append(cleanedParams, ParamMatch{paramName, reason})
+		}
+	}
+
+	if len(cleanedParams) > 0 {
+		cleanedURL := url
+		cleanedURL.RawQuery = harvestedParams.Encode()
+		return true, cleanedURL
+	}
+	return false, url
+}
+
 func harvestResource(h *ContentHarvester, origURLtext string) *HarvestedResource {
 	result := new(HarvestedResource)
 	result.origURLtext = origURLtext
@@ -92,7 +119,7 @@ func harvestResource(h *ContentHarvester, origURLtext string) *HarvestedResource
 	result.destContentType = resp.Header.Get("Content-type")
 	result.resolvedURL = resp.Request.URL
 	result.finalURL = result.resolvedURL
-	ignoreURL, ignoreReason := h.ignoreResource(result.resolvedURL)
+	ignoreURL, ignoreReason := h.ignoreResourceRule.IgnoreDiscoveredResource(result.resolvedURL)
 	if ignoreURL {
 		result.isDestValid = true
 		result.isURLIgnored = true
@@ -102,7 +129,7 @@ func harvestResource(h *ContentHarvester, origURLtext string) *HarvestedResource
 
 	result.isURLIgnored = false
 	result.isDestValid = true
-	urlsParamsCleaned, cleanedURL := h.cleanResource(result.resolvedURL)
+	urlsParamsCleaned, cleanedURL := cleanResource(result.resolvedURL, h.cleanResourceRule)
 	if urlsParamsCleaned {
 		result.cleanedURL = cleanedURL
 		result.finalURL = cleanedURL
