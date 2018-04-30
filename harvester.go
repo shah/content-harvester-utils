@@ -3,12 +3,16 @@ package harvester
 import (
 	"net/url"
 	"regexp"
+
+	"mvdan.cc/xurls"
 )
 
+// IgnoreDiscoveredResourceRule is a rule
 type IgnoreDiscoveredResourceRule interface {
 	IgnoreDiscoveredResource(url *url.URL) (bool, string)
 }
 
+// CleanDiscoveredResourceRule is a rule
 type CleanDiscoveredResourceRule interface {
 	CleanDiscoveredResource(url *url.URL) bool
 	RemoveQueryParamFromResource(paramName string) (bool, string)
@@ -28,9 +32,9 @@ type HarvestedResources struct {
 }
 
 // MakeContentHarvester prepares a content harvester
-func MakeContentHarvester(discoverURLsRegEx *regexp.Regexp, ignoreResourceRule IgnoreDiscoveredResourceRule, cleanResourceRule CleanDiscoveredResourceRule) *ContentHarvester {
+func MakeContentHarvester(ignoreResourceRule IgnoreDiscoveredResourceRule, cleanResourceRule CleanDiscoveredResourceRule) *ContentHarvester {
 	result := new(ContentHarvester)
-	result.discoverURLsRegEx = discoverURLsRegEx
+	result.discoverURLsRegEx = xurls.Relaxed()
 	result.ignoreResourceRule = ignoreResourceRule
 	result.cleanResourceRule = cleanResourceRule
 	return result
