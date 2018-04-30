@@ -6,6 +6,9 @@ import (
 	"net/url"
 )
 
+// HarvestedResource tracks a single URL that was discovered in content.
+// Discovered URLs are validated, follow their redirects, and may have
+// query parameters "cleaned" (if instructed).
 type HarvestedResource struct {
 	// TODO consider adding source information (e.g. tweet, e-mail, etc.)
 	origURLtext     string
@@ -20,26 +23,34 @@ type HarvestedResource struct {
 	finalURL        *url.URL
 }
 
+// OriginalURLText returns the URL as it was discovered, with no alterations
 func (r *HarvestedResource) OriginalURLText() string {
 	return r.origURLtext
 }
 
+// IsValid indicates whether (a) the original URL was parseable and (b) whether
+// the destination is valid -- meaning not a 404 or something else
 func (r *HarvestedResource) IsValid() (bool, bool) {
 	return r.isURLValid, r.isDestValid
 }
 
+// IsIgnored indicates whether the URL should be ignored based on harvesting rules.
+// Discovered URLs may be ignored for a variety of reasons using a list of Regexps.
 func (r *HarvestedResource) IsIgnored() (bool, string) {
 	return r.isURLIgnored, r.ignoreReason
 }
 
+// IsCleaned indicates whether URL query parameters were removed and the new "cleaned" URL
 func (r *HarvestedResource) IsCleaned() (bool, *url.URL) {
 	return r.isURLCleaned, r.cleanedURL
 }
 
+// GetURLs returns the final (most useful), originally resolved, and "cleaned" URLs
 func (r *HarvestedResource) GetURLs() (*url.URL, *url.URL, *url.URL) {
 	return r.finalURL, r.resolvedURL, r.cleanedURL
 }
 
+// DestinationContentType returns the MIME type of the destination
 func (r *HarvestedResource) DestinationContentType() string {
 	return r.destContentType
 }
