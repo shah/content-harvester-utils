@@ -100,7 +100,8 @@ func harvestResource(h *ContentHarvester, origURLtext string) *HarvestedResource
 	}
 
 	// TODO once the URL is cleaned, double-check the cleaned URL to see if it's a valid destination; if not, revert to non-cleaned version
-	// this could be done recursively here or by the outer function
+	// this could be done recursively here or by the outer function. This is necessary because "cleaning" a URL and removing params might
+	// break it so we need to revert to original.
 
 	return result
 }
