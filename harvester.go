@@ -69,6 +69,8 @@ func (h *ContentHarvester) HarvestResources(content string) *HarvestedResources 
 	urls := h.discoverURLsRegEx.FindAllString(content, -1)
 	for _, urlText := range urls {
 		res := harvestResource(h, urlText)
+
+		// TODO check for duplicates and only append unique discovered URLs
 		result.Resources = append(result.Resources, res)
 	}
 	return result
