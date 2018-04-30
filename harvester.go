@@ -6,23 +6,26 @@ import (
 	"regexp"
 )
 
+// ContentHarvester discovers URLs (called "Resources" from the "R" in "URL")
 type ContentHarvester struct {
 	discoverURLsRegEx         *regexp.Regexp
 	ignoreURLsRegEx           []*regexp.Regexp
 	removeParamsFromURLsRegEx []*regexp.Regexp
 }
 
+// The HarvestedResources is the list of URLs discovered in a piece of content
+type HarvestedResources struct {
+	// TODO remove duplicates in case the same resource is included more than once
+	Resources []*HarvestedResource
+}
+
+// MakeContentHarvester prepares a content harvester
 func MakeContentHarvester(discoverURLsRegEx *regexp.Regexp, ignoreURLsRegEx []*regexp.Regexp, removeParamsFromURLsRegEx []*regexp.Regexp) *ContentHarvester {
 	result := new(ContentHarvester)
 	result.discoverURLsRegEx = discoverURLsRegEx
 	result.ignoreURLsRegEx = ignoreURLsRegEx
 	result.removeParamsFromURLsRegEx = removeParamsFromURLsRegEx
 	return result
-}
-
-type HarvestedResources struct {
-	// TODO remove duplicates in case the same resource is included more than once
-	Resources []*HarvestedResource
 }
 
 func (h *ContentHarvester) ignoreResource(url *url.URL) (bool, string) {
@@ -56,11 +59,11 @@ func (h *ContentHarvester) cleanResource(url *url.URL) (bool, *url.URL) {
 		cleanedURL := url
 		cleanedURL.RawQuery = harvestedParams.Encode()
 		return true, cleanedURL
-	} else {
-		return false, url
 	}
+	return false, url
 }
 
+// HarvestResources discovers URLs within content and returns what was found
 func (h *ContentHarvester) HarvestResources(content string) *HarvestedResources {
 	result := new(HarvestedResources)
 	urls := h.discoverURLsRegEx.FindAllString(content, -1)
