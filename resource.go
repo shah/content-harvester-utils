@@ -9,8 +9,9 @@ import (
 // HarvestedResource tracks a single URL that was discovered in content.
 // Discovered URLs are validated, follow their redirects, and may have
 // query parameters "cleaned" (if instructed).
+// TODO need to add heavy automated testing through unit tests
 type HarvestedResource struct {
-	// TODO consider adding source information (e.g. tweet, e-mail, etc.)
+	// TODO consider adding source information (e.g. tweet, e-mail, etc.) and embed style (e.g. text, HTML <a> tag, etc.)
 	origURLtext     string
 	isURLValid      bool
 	isDestValid     bool
