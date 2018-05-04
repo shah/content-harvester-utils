@@ -10,6 +10,7 @@ import (
 // TODO use https://github.com/PuerkitoBio/goquery for parsing singe page HTML (similar to cheerio library for Node.js)
 // TODO use https://github.com/gocolly/colly for scraping multiple page HTML sites
 // TODO use https://github.com/andrewstuart/goq for type-safe layer on top of goquery using struct-tag
+// TODO use https://github.com/spf13/afero as a fileSystem abstraction layer in case resources will be stored
 
 // IgnoreDiscoveredResourceRule is a rule
 type IgnoreDiscoveredResourceRule interface {
