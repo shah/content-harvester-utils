@@ -11,6 +11,8 @@ import (
 // TODO use https://github.com/gocolly/colly for scraping multiple page HTML sites
 // TODO use https://github.com/andrewstuart/goq for type-safe layer on top of goquery using struct-tag
 // TODO use https://github.com/spf13/afero as a fileSystem abstraction layer in case resources will be stored
+// TODO use https://github.com/h2non/filetype to infer file types checking the magic numbers signature (after downloading the file and keeping it the filesystem)
+// TODO use https://medium.com/@aschers/deploy-machine-learning-models-from-r-research-to-ruby-go-production-with-pmml-b41e79445d3d for scoring content
 
 // IgnoreDiscoveredResourceRule is a rule
 type IgnoreDiscoveredResourceRule interface {
