@@ -41,7 +41,7 @@ type HarvestedResources struct {
 // MakeContentHarvester prepares a content harvester
 func MakeContentHarvester(ignoreResourceRule IgnoreDiscoveredResourceRule, cleanResourceRule CleanDiscoveredResourceRule) *ContentHarvester {
 	result := new(ContentHarvester)
-	result.discoverURLsRegEx = xurls.Relaxed()
+	result.discoverURLsRegEx = xurls.Relaxed
 	result.ignoreResourceRule = ignoreResourceRule
 	result.cleanResourceRule = cleanResourceRule
 	return result
