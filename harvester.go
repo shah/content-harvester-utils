@@ -59,7 +59,8 @@ func (h *ContentHarvester) HarvestResources(content string) *HarvestedResources 
 		// check and see if we have an HTML content-based redirect via meta refresh (not HTTP)
 		referredTo := harvestResourceFromReferrer(h, res)
 		if referredTo != nil && h.followHTMLRedirects {
-			res.origResource = referredTo
+			// if we had a redirect, then that's the one we'll use
+			res = referredTo
 		}
 
 		// TODO check for duplicates and only append unique discovered URLs
