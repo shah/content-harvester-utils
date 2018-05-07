@@ -60,7 +60,8 @@ func (suite *ResourceSuite) TestResolvedURLRedirectedThroughHTMLProperly() {
 	suite.Equal(htmlRedirectURLText, "https://www.sopranodesign.com/secure-healthcare-messaging/?utm_source=twitter&utm_medium=socialmedia&utm_campaign=soprano")
 
 	// at this point we want to get the "new" (redirected) and test it
-	redirectedHR := harvestResource(suite.ch, htmlRedirectURLText)
+	redirectedHR := harvestResourceFromReferrer(suite.ch, hr)
+	suite.Equal(redirectedHR.ReferredByResource(), hr, "The referral resource should be the same as the original")
 	isURLValid, isDestValid = redirectedHR.IsValid()
 	suite.True(isURLValid, "Redirected URL should be formatted validly")
 	suite.True(isDestValid, "Redirected URL should have valid destination")

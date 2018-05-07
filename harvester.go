@@ -56,9 +56,10 @@ func (h *ContentHarvester) HarvestResources(content string) *HarvestedResources 
 	for _, urlText := range urls {
 		res := harvestResource(h, urlText)
 
-		isHTMLRedirect, htmlRedirectURL := res.IsHTMLRedirect()
-		if isHTMLRedirect && h.followHTMLRedirects {
-			res = harvestResource(h, htmlRedirectURL)
+		// check and see if we have an HTML content-based redirect via meta refresh (not HTTP)
+		referredTo := harvestResourceFromReferrer(h, res)
+		if referredTo != nil && h.followHTMLRedirects {
+			res.origResource = referredTo
 		}
 
 		// TODO check for duplicates and only append unique discovered URLs

@@ -21,6 +21,7 @@ var metaRefreshContentRegEx = regexp.MustCompile(`^(\d?)\s?;\s?url=(.*)$`)
 type HarvestedResource struct {
 	// TODO consider adding source information (e.g. tweet, e-mail, etc.) and embed style (e.g. text, HTML <a> tag, etc.)
 	origURLtext     string
+	origResource    *HarvestedResource
 	isURLValid      bool
 	isDestValid     bool
 	httpStatusCode  int
@@ -39,6 +40,12 @@ type HarvestedResource struct {
 // OriginalURLText returns the URL as it was discovered, with no alterations
 func (r *HarvestedResource) OriginalURLText() string {
 	return r.origURLtext
+}
+
+// ReferredByResource returns the original resource that referred this one,
+// which is only non-nil when this resource was an HTML (not HTTP) redirect
+func (r *HarvestedResource) ReferredByResource() *HarvestedResource {
+	return r.origResource
 }
 
 // IsValid indicates whether (a) the original URL was parseable and (b) whether
@@ -212,5 +219,16 @@ func harvestResource(h *ContentHarvester, origURLtext string) *HarvestedResource
 	// this could be done recursively here or by the outer function. This is necessary because "cleaning" a URL and removing params might
 	// break it so we need to revert to original.
 
+	return result
+}
+
+func harvestResourceFromReferrer(h *ContentHarvester, original *HarvestedResource) *HarvestedResource {
+	isHTMLRedirect, htmlRedirectURL := original.IsHTMLRedirect()
+	if !isHTMLRedirect {
+		return nil
+	}
+
+	result := harvestResource(h, htmlRedirectURL)
+	result.origResource = original
 	return result
 }
