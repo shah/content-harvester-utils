@@ -27,9 +27,10 @@ type CleanDiscoveredResourceRule interface {
 
 // ContentHarvester discovers URLs (called "Resources" from the "R" in "URL")
 type ContentHarvester struct {
-	discoverURLsRegEx  *regexp.Regexp
-	ignoreResourceRule IgnoreDiscoveredResourceRule
-	cleanResourceRule  CleanDiscoveredResourceRule
+	discoverURLsRegEx   *regexp.Regexp
+	followHTMLRedirects bool
+	ignoreResourceRule  IgnoreDiscoveredResourceRule
+	cleanResourceRule   CleanDiscoveredResourceRule
 }
 
 // The HarvestedResources is the list of URLs discovered in a piece of content
@@ -39,11 +40,12 @@ type HarvestedResources struct {
 }
 
 // MakeContentHarvester prepares a content harvester
-func MakeContentHarvester(ignoreResourceRule IgnoreDiscoveredResourceRule, cleanResourceRule CleanDiscoveredResourceRule) *ContentHarvester {
+func MakeContentHarvester(ignoreResourceRule IgnoreDiscoveredResourceRule, cleanResourceRule CleanDiscoveredResourceRule, followHTMLRedirects bool) *ContentHarvester {
 	result := new(ContentHarvester)
 	result.discoverURLsRegEx = xurls.Relaxed
 	result.ignoreResourceRule = ignoreResourceRule
 	result.cleanResourceRule = cleanResourceRule
+	result.followHTMLRedirects = followHTMLRedirects
 	return result
 }
 
@@ -53,6 +55,11 @@ func (h *ContentHarvester) HarvestResources(content string) *HarvestedResources 
 	urls := h.discoverURLsRegEx.FindAllString(content, -1)
 	for _, urlText := range urls {
 		res := harvestResource(h, urlText)
+
+		isHTMLRedirect, htmlRedirectURL := res.IsHTMLRedirect()
+		if isHTMLRedirect && h.followHTMLRedirects {
+			res = harvestResource(h, htmlRedirectURL)
+		}
 
 		// TODO check for duplicates and only append unique discovered URLs
 		result.Resources = append(result.Resources, res)

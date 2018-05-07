@@ -4,7 +4,15 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strings"
+
+	"golang.org/x/net/html"
 )
+
+// metaRefreshContentRegEx is used to match the 'content' attribute in a tag like this:
+//   <meta http-equiv="refresh" content="2;url=https://www.google.com">
+var metaRefreshContentRegEx = regexp.MustCompile(`^(\d?)\s?;\s?url=(.*)$`)
 
 // HarvestedResource tracks a single URL that was discovered in content.
 // Discovered URLs are validated, follow their redirects, and may have
@@ -15,10 +23,13 @@ type HarvestedResource struct {
 	origURLtext     string
 	isURLValid      bool
 	isDestValid     bool
+	httpStatusCode  int
 	isURLIgnored    bool
 	ignoreReason    string
 	isURLCleaned    bool
 	destContentType string
+	isHTMLRedirect  bool
+	htmlRedirectURL string
 	resolvedURL     *url.URL
 	cleanedURL      *url.URL
 	finalURL        *url.URL
@@ -51,6 +62,12 @@ func (r *HarvestedResource) GetURLs() (*url.URL, *url.URL, *url.URL) {
 	return r.finalURL, r.resolvedURL, r.cleanedURL
 }
 
+// IsHTMLRedirect returns true if redirect was requested through via <meta http-equiv='refresh' content='delay;url='>
+// For an explanation, please see http://redirectdetective.com/redirection-types.html
+func (r *HarvestedResource) IsHTMLRedirect() (bool, string) {
+	return r.isHTMLRedirect, r.htmlRedirectURL
+}
+
 // DestinationContentType returns the MIME type of the destination
 func (r *HarvestedResource) DestinationContentType() string {
 	return r.destContentType
@@ -61,10 +78,16 @@ func (r *HarvestedResource) DestinationContentType() string {
 
 func cleanResource(url *url.URL, rule CleanDiscoveredResourceRule) (bool, *url.URL) {
 	if !rule.CleanDiscoveredResource(url) {
-		return false, url
+		return false, nil
 	}
 
-	harvestedParams := url.Query()
+	// make a copy because we're planning on changing the URL params
+	cleanedURL, error := url.Parse(url.String())
+	if error != nil {
+		return false, nil
+	}
+
+	harvestedParams := cleanedURL.Query()
 	type ParamMatch struct {
 		paramName string
 		reason    string
@@ -79,11 +102,64 @@ func cleanResource(url *url.URL, rule CleanDiscoveredResourceRule) (bool, *url.U
 	}
 
 	if len(cleanedParams) > 0 {
-		cleanedURL := url
 		cleanedURL.RawQuery = harvestedParams.Encode()
 		return true, cleanedURL
 	}
-	return false, url
+	return false, nil
+}
+
+func findMetaRefreshTagInHead(doc *html.Node) (*html.Node, error) {
+	var metaTag *html.Node
+	var inHead bool
+	var f func(*html.Node)
+	f = func(n *html.Node) {
+		if n.Type == html.ElementNode && strings.EqualFold(n.Data, "head") {
+			inHead = true
+		}
+		if inHead && n.Type == html.ElementNode && strings.EqualFold(n.Data, "meta") {
+			for _, attr := range n.Attr {
+				if strings.EqualFold(attr.Key, "http-equiv") && strings.EqualFold(strings.TrimSpace(attr.Val), "refresh") {
+					metaTag = n
+					return
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			f(c)
+		}
+	}
+	f(doc)
+	if metaTag != nil {
+		return metaTag, nil
+	}
+	return nil, nil
+}
+
+// See for explanation: http://redirectdetective.com/redirection-types.html
+func getMetaRefresh(resp *http.Response) (string, error) {
+	doc, _ := html.Parse(resp.Body)
+	defer resp.Body.Close()
+	mn, err := findMetaRefreshTagInHead(doc)
+	if err != nil {
+		return "", err
+	}
+	if mn == nil {
+		return "", nil
+	}
+
+	for _, attr := range mn.Attr {
+		if strings.EqualFold(attr.Key, "content") {
+			contentValue := strings.TrimSpace(attr.Val)
+			parts := metaRefreshContentRegEx.FindStringSubmatch(contentValue)
+			if parts != nil && len(parts) == 3 {
+				// the first part is the entire match
+				// the second and third parts are the delay and URL
+				return parts[2], nil
+			}
+		}
+	}
+
+	return "", nil
 }
 
 func harvestResource(h *ContentHarvester, origURLtext string) *HarvestedResource {
@@ -101,20 +177,13 @@ func harvestResource(h *ContentHarvester, origURLtext string) *HarvestedResource
 		return result
 	}
 
-	if resp.StatusCode != 200 {
+	result.httpStatusCode = resp.StatusCode
+	if result.httpStatusCode != 200 {
 		result.isDestValid = false
 		result.isURLIgnored = true
 		result.ignoreReason = fmt.Sprintf("Invalid HTTP Status Code %d", resp.StatusCode)
 		return result
 	}
-
-	// If we get to here, it means that the URL is valid and the destination is real.
-	// But, it doesnt mean there are no other redirects.
-	// TODO study other types: http://redirectdetective.com/redirection-types.html
-	// TODO add Meta Refresh detection, try it out on this URL:
-	//      https://t.co/4dcdNEQYHa, which redirects to http://okt.to/7QDUYM,
-	//      which uses meta refresh to redirect but the code in this package doesn't
-	//      handle the redirect
 
 	result.destContentType = resp.Header.Get("Content-type")
 	result.resolvedURL = resp.Request.URL
@@ -136,6 +205,13 @@ func harvestResource(h *ContentHarvester, origURLtext string) *HarvestedResource
 		result.isURLCleaned = true
 	} else {
 		result.isURLCleaned = false
+	}
+
+	metaRefreshURLText, _ := getMetaRefresh(resp)
+	if metaRefreshURLText != "" {
+		result.isHTMLRedirect = true
+		result.htmlRedirectURL = metaRefreshURLText
+		return result
 	}
 
 	// TODO once the URL is cleaned, double-check the cleaned URL to see if it's a valid destination; if not, revert to non-cleaned version
