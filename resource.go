@@ -30,6 +30,7 @@ type HarvestedResource struct {
 	destContentType string
 	isHTMLRedirect  bool
 	htmlRedirectURL string
+	htmlParseError  error
 	resolvedURL     *url.URL
 	cleanedURL      *url.URL
 	finalURL        *url.URL
@@ -108,7 +109,7 @@ func cleanResource(url *url.URL, rule CleanDiscoveredResourceRule) (bool, *url.U
 	return false, nil
 }
 
-func findMetaRefreshTagInHead(doc *html.Node) (*html.Node, error) {
+func findMetaRefreshTagInHead(doc *html.Node) *html.Node {
 	var metaTag *html.Node
 	var inHead bool
 	var f func(*html.Node)
@@ -129,22 +130,20 @@ func findMetaRefreshTagInHead(doc *html.Node) (*html.Node, error) {
 		}
 	}
 	f(doc)
-	if metaTag != nil {
-		return metaTag, nil
-	}
-	return nil, nil
+	return metaTag
 }
 
 // See for explanation: http://redirectdetective.com/redirection-types.html
-func getMetaRefresh(resp *http.Response) (string, error) {
-	doc, _ := html.Parse(resp.Body)
-	defer resp.Body.Close()
-	mn, err := findMetaRefreshTagInHead(doc)
-	if err != nil {
-		return "", err
+func getMetaRefresh(resp *http.Response) (bool, string, error) {
+	doc, parseError := html.Parse(resp.Body)
+	if parseError != nil {
+		return false, "", parseError
 	}
+	defer resp.Body.Close()
+
+	mn := findMetaRefreshTagInHead(doc)
 	if mn == nil {
-		return "", nil
+		return false, "", nil
 	}
 
 	for _, attr := range mn.Attr {
@@ -154,12 +153,12 @@ func getMetaRefresh(resp *http.Response) (string, error) {
 			if parts != nil && len(parts) == 3 {
 				// the first part is the entire match
 				// the second and third parts are the delay and URL
-				return parts[2], nil
+				return true, parts[2], nil
 			}
 		}
 	}
 
-	return "", nil
+	return false, "", nil
 }
 
 func harvestResource(h *ContentHarvester, origURLtext string) *HarvestedResource {
@@ -207,12 +206,7 @@ func harvestResource(h *ContentHarvester, origURLtext string) *HarvestedResource
 		result.isURLCleaned = false
 	}
 
-	metaRefreshURLText, _ := getMetaRefresh(resp)
-	if metaRefreshURLText != "" {
-		result.isHTMLRedirect = true
-		result.htmlRedirectURL = metaRefreshURLText
-		return result
-	}
+	result.isHTMLRedirect, result.htmlRedirectURL, result.htmlParseError = getMetaRefresh(resp)
 
 	// TODO once the URL is cleaned, double-check the cleaned URL to see if it's a valid destination; if not, revert to non-cleaned version
 	// this could be done recursively here or by the outer function. This is necessary because "cleaning" a URL and removing params might
