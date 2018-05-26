@@ -2,10 +2,40 @@
 
 
 [[projects]]
+  name = "github.com/Machiel/slugify"
+  packages = ["."]
+  revision = "d7f9bcd23b5963c8cf57acbce25b9fec17897c61"
+  version = "v1.0.1"
+
+[[projects]]
+  name = "github.com/PuerkitoBio/goquery"
+  packages = ["."]
+  revision = "a86ea073017a6beddef78c8659e7224e8ca634b0"
+  version = "v1.4.0"
+
+[[projects]]
+  name = "github.com/andybalholm/cascadia"
+  packages = ["."]
+  revision = "901648c87902174f774fac311d7f176f8647bdaa"
+  version = "v1.0.0"
+
+[[projects]]
   name = "github.com/davecgh/go-spew"
   packages = ["spew"]
   revision = "346938d642f2ec3594ed81d874461961cd0faa76"
   version = "v1.1.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/julianshen/go-readability"
+  packages = ["."]
+  revision = "accf5123e28378bd35e0a92815d24a8990352fcb"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/julianshen/og"
+  packages = ["."]
+  revision = "897162c55567bfbb909b098a0e9e936bcea983af"
 
 [[projects]]
   name = "github.com/pmezard/go-difflib"
@@ -30,7 +60,7 @@
     "html",
     "html/atom"
   ]
-  revision = "640f4622ab692b87c2f3a94265e6f579fe38263d"
+  revision = "dfa909b99c79129e1100513e5cd36307665e5723"
 
 [[projects]]
   name = "mvdan.cc/xurls"
@@ -41,6 +71,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "abae41ee0c95bd5eaeae222f7a1ac00fe40e1cdf926bdc4a2020f30b2a373882"
+  inputs-digest = "1c21799829d98d5ce32a3dedbbadf8f5609532436691b151a41d65575a4ebb21"
   solver-name = "gps-cdcl"
   solver-version = 1

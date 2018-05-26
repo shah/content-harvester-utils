@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"golang.org/x/net/html"
 )
@@ -20,6 +21,7 @@ var metaRefreshContentRegEx = regexp.MustCompile(`^(\d?)\s?;\s?url=(.*)$`)
 // TODO need to add heavy automated testing through unit tests
 type HarvestedResource struct {
 	// TODO consider adding source information (e.g. tweet, e-mail, etc.) and embed style (e.g. text, HTML <a> tag, etc.)
+	harvestedDate   time.Time
 	origURLtext     string
 	origResource    *HarvestedResource
 	isURLValid      bool
@@ -29,6 +31,7 @@ type HarvestedResource struct {
 	ignoreReason    string
 	isURLCleaned    bool
 	destContentType string
+	destContentDate time.Time
 	isHTMLRedirect  bool
 	htmlRedirectURL string
 	htmlParseError  error
@@ -81,9 +84,12 @@ func (r *HarvestedResource) DestinationContentType() string {
 	return r.destContentType
 }
 
-// TODO create Key() and Hash() funcs that will give a key (finalURL) and hash
-// for checking against duplicates
+// Dates returns the dates of creation and last modification
+func (r *HarvestedResource) Dates() (time.Time, time.Time) {
+	return r.harvestedDate, r.destContentDate
+}
 
+// cleanResource checks to see if there are any parameters that should be removed (e.g. UTM_*)
 func cleanResource(url *url.URL, rule CleanDiscoveredResourceRule) (bool, *url.URL) {
 	if !rule.CleanDiscoveredResource(url) {
 		return false, nil
@@ -171,6 +177,7 @@ func getMetaRefresh(resp *http.Response) (bool, string, error) {
 func harvestResource(h *ContentHarvester, origURLtext string) *HarvestedResource {
 	result := new(HarvestedResource)
 	result.origURLtext = origURLtext
+	result.harvestedDate = time.Now()
 
 	// Use the standard Go HTTP library method to retrieve the content; the
 	// default will automatically follow redirects (e.g. HTTP redirects)
@@ -192,6 +199,7 @@ func harvestResource(h *ContentHarvester, origURLtext string) *HarvestedResource
 	}
 
 	result.destContentType = resp.Header.Get("Content-type")
+	result.destContentDate, _ = http.ParseTime(resp.Header.Get("Last-Modified"))
 	result.resolvedURL = resp.Request.URL
 	result.finalURL = result.resolvedURL
 	ignoreURL, ignoreReason := h.ignoreResourceRule.IgnoreDiscoveredResource(result.resolvedURL)

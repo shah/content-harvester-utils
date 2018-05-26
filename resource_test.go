@@ -90,6 +90,24 @@ func (suite *ResourceSuite) TestResolvedURLCleaned() {
 	suite.Equal(finalURL.String(), cleanedURL.String(), "finalURL should be same as cleanedURL")
 }
 
+func (suite *ResourceSuite) TestResolvedURLCleanedKeys() {
+	hr := suite.harvestSingleURLFromMockTweet("Test a good URL %s which will redirect to a URL we want to ignore, with utm_* params", "https://t.co/csWpQq5mbn")
+	isURLValid, isDestValid := hr.IsValid()
+	suite.True(isURLValid, "URL should be formatted validly")
+	suite.True(isDestValid, "URL should have valid destination")
+	isIgnored, _ := hr.IsIgnored()
+	suite.False(isIgnored, "URL should not be ignored")
+	isCleaned, _ := hr.IsCleaned()
+	suite.True(isCleaned, "URL should be 'cleaned'")
+	finalURL, resolvedURL, cleanedURL := hr.GetURLs()
+	suite.Equal(resolvedURL.String(), "https://www.washingtonexaminer.com/chris-matthews-trump-russia-collusion-theory-came-apart-with-comey-testimony/article/2625372?utm_campaign=crowdfire&utm_content=crowdfire&utm_medium=social&utm_source=twitter")
+	suite.Equal(cleanedURL.String(), "https://www.washingtonexaminer.com/chris-matthews-trump-russia-collusion-theory-came-apart-with-comey-testimony/article/2625372")
+	suite.Equal(finalURL.String(), cleanedURL.String(), "finalURL should be same as cleanedURL")
+
+	keys := CreateKeys(hr)
+	suite.Equal(keys.Slug(), "chris-matthews-trump-russia-collusion-theory-came-apart-with-comey-testimony")
+}
+
 func (suite *ResourceSuite) TestResolvedURLNotCleaned() {
 	hr := suite.harvestSingleURLFromMockTweet("Test a good URL %s which will redirect to a URL we want to ignore", "https://t.co/ELrZmo81wI")
 	isURLValid, isDestValid := hr.IsValid()
