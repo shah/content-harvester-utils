@@ -2,11 +2,13 @@ package harvester
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path"
-	"strconv"
+	"strings"
 	"testing"
+	"text/template"
 
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
@@ -14,8 +16,36 @@ import (
 
 type ResourceSuite struct {
 	suite.Suite
-	logger *zap.Logger
-	ch     *ContentHarvester
+	logger    *zap.Logger
+	ch        *ContentHarvester
+	harvested *HarvestedResources
+	template  *template.Template
+	markdown  map[string]*strings.Builder
+}
+
+func (suite *ResourceSuite) GetHarvestedResourceSerializationTemplate() (*template.Template, error) {
+	return suite.template, nil
+}
+
+func (suite *ResourceSuite) CreateHarvestedResourceSerializationKeys(hr *HarvestedResource) *HarvestedResourceKeys {
+	return CreateHarvestedResourceKeys(hr, func(random uint32, try int) bool {
+		return false
+	})
+}
+
+func (suite *ResourceSuite) GetHarvestedResourceSerializationParams(*HarvestedResourceKeys) *map[string]interface{} {
+	result := make(map[string]interface{})
+	result["ProvenanceType"] = "tweet"
+	return &result
+}
+
+func (suite *ResourceSuite) GetHarvestedResourceSerializationWriter(keys *HarvestedResourceKeys) io.Writer {
+	markdown, found := suite.markdown[keys.hr.finalURL.String()]
+	if !found {
+		markdown = new(strings.Builder)
+		suite.markdown[keys.hr.finalURL.String()] = markdown
+	}
+	return markdown
 }
 
 func (suite *ResourceSuite) SetupSuite() {
@@ -25,12 +55,19 @@ func (suite *ResourceSuite) SetupSuite() {
 	}
 	suite.logger = logger
 	suite.ch = MakeContentHarvester(suite.logger, defaultIgnoreURLsRegExList, defaultCleanURLsRegExList, false)
+
+	t, err := template.ParseFiles("serialize.md.tmpl")
+	if err != nil {
+		panic(err)
+	}
+	suite.template = t
+	suite.markdown = make(map[string]*strings.Builder)
 }
 
 func (suite *ResourceSuite) harvestSingleURLFromMockTweet(text string, msgAndArgs ...interface{}) *HarvestedResource {
-	harvested := suite.ch.HarvestResources(fmt.Sprintf(text, msgAndArgs))
-	suite.Equal(len(harvested.Resources), 1)
-	return harvested.Resources[0]
+	suite.harvested = suite.ch.HarvestResources(fmt.Sprintf(text, msgAndArgs))
+	suite.Equal(len(suite.harvested.Resources), 1)
+	return suite.harvested.Resources[0]
 }
 
 func (suite *ResourceSuite) TestInvalidlyFormattedURLs() {
@@ -38,7 +75,7 @@ func (suite *ResourceSuite) TestInvalidlyFormattedURLs() {
 	isURLValid, isDestValid := hr.IsValid()
 	suite.False(isURLValid, "URL should have invalid format")
 	suite.False(isDestValid, "URL should have invalid destination")
-	suite.Nil(hr.Content(), "No content should be available")
+	suite.Nil(hr.ResourceContent(), "No content should be available")
 }
 
 func (suite *ResourceSuite) TestInvalidDestinationURLs() {
@@ -47,7 +84,7 @@ func (suite *ResourceSuite) TestInvalidDestinationURLs() {
 	suite.True(isURLValid, "URL should be formatted validly")
 	suite.False(isDestValid, "URL should have invalid destination")
 	suite.Equal(hr.httpStatusCode, 404)
-	suite.Nil(hr.Content(), "No content should be available")
+	suite.Nil(hr.ResourceContent(), "No content should be available")
 }
 
 func (suite *ResourceSuite) TestIgnoreRules() {
@@ -58,7 +95,7 @@ func (suite *ResourceSuite) TestIgnoreRules() {
 	isIgnored, ignoreReason := hr.IsIgnored()
 	suite.True(isIgnored, "URL should be ignored (skipped)")
 	suite.Equal(ignoreReason, "Matched Ignore Rule `^https://twitter.com/(.*?)/status/(.*)$`")
-	suite.Nil(hr.Content(), "No content should be available")
+	suite.Nil(hr.ResourceContent(), "No content should be available")
 }
 
 func (suite *ResourceSuite) TestResolvedURLRedirectedThroughHTMLProperly() {
@@ -71,7 +108,7 @@ func (suite *ResourceSuite) TestResolvedURLRedirectedThroughHTMLProperly() {
 	isHTMLRedirect, htmlRedirectURLText := hr.IsHTMLRedirect()
 	suite.True(isHTMLRedirect, "There should have been an HTML redirect requested through <meta http-equiv='refresh' content='delay;url='>")
 	suite.Equal(htmlRedirectURLText, "https://www.sopranodesign.com/secure-healthcare-messaging/?utm_source=twitter&utm_medium=socialmedia&utm_campaign=soprano")
-	suite.NotNil(hr.Content(), "Content should be available")
+	suite.NotNil(hr.ResourceContent(), "Content should be available")
 
 	// at this point we want to get the "new" (redirected) and test it
 	redirectedHR := harvestResourceFromReferrer(suite.ch, hr)
@@ -87,7 +124,7 @@ func (suite *ResourceSuite) TestResolvedURLRedirectedThroughHTMLProperly() {
 	suite.Equal(resolvedURL.String(), "https://www.sopranodesign.com/secure-healthcare-messaging/?utm_source=twitter&utm_medium=socialmedia&utm_campaign=soprano")
 	suite.Equal(cleanedURL.String(), "https://www.sopranodesign.com/secure-healthcare-messaging/")
 	suite.Equal(finalURL.String(), cleanedURL.String(), "finalURL should be same as cleanedURL")
-	suite.NotNil(redirectedHR.Content(), "Content should be available")
+	suite.NotNil(redirectedHR.ResourceContent(), "Content should be available")
 }
 
 func (suite *ResourceSuite) TestResolvedURLCleaned() {
@@ -103,7 +140,7 @@ func (suite *ResourceSuite) TestResolvedURLCleaned() {
 	suite.Equal(resolvedURL.String(), "https://www.washingtonexaminer.com/chris-matthews-trump-russia-collusion-theory-came-apart-with-comey-testimony/article/2625372?utm_campaign=crowdfire&utm_content=crowdfire&utm_medium=social&utm_source=twitter")
 	suite.Equal(cleanedURL.String(), "https://www.washingtonexaminer.com/chris-matthews-trump-russia-collusion-theory-came-apart-with-comey-testimony/article/2625372")
 	suite.Equal(finalURL.String(), cleanedURL.String(), "finalURL should be same as cleanedURL")
-	suite.NotNil(hr.Content(), "Content should be available")
+	suite.NotNil(hr.ResourceContent(), "Content should be available")
 }
 
 func (suite *ResourceSuite) TestResolvedURLCleanedKeys() {
@@ -122,15 +159,39 @@ func (suite *ResourceSuite) TestResolvedURLCleanedKeys() {
 
 	var testRandom uint32
 	var testTry int
-	keys := CreateKeys(hr, "test-", func(name string, random uint32, try int) bool {
+	keys := CreateHarvestedResourceKeys(hr, func(random uint32, try int) bool {
 		testRandom = random
 		testTry = try
 		return false
 	})
 	suite.Equal(testTry, 0)
-	suite.Equal(keys.UniqueID(), "test-"+strconv.Itoa(int(testRandom))[1:])
+	suite.Equal(keys.UniqueID(), testRandom)
 	suite.Equal(keys.Slug(), "chris-matthews-trump-russia-collusion-theory-came-apart-with-comey-testimony")
-	suite.NotNil(hr.Content(), "Content should be available")
+	suite.NotNil(hr.ResourceContent(), "Content should be available")
+}
+
+func (suite *ResourceSuite) TestResolvedURLCleanedSerializer() {
+	hr := suite.harvestSingleURLFromMockTweet("Test a good URL %s which will redirect to a URL we want to ignore, with utm_* params", "https://t.co/csWpQq5mbn")
+	isURLValid, isDestValid := hr.IsValid()
+	suite.True(isURLValid, "URL should be formatted validly")
+	suite.True(isDestValid, "URL should have valid destination")
+	isIgnored, _ := hr.IsIgnored()
+	suite.False(isIgnored, "URL should not be ignored")
+	isCleaned, _ := hr.IsCleaned()
+	suite.True(isCleaned, "URL should be 'cleaned'")
+	finalURL, resolvedURL, cleanedURL := hr.GetURLs()
+	suite.Equal(resolvedURL.String(), "https://www.washingtonexaminer.com/chris-matthews-trump-russia-collusion-theory-came-apart-with-comey-testimony/article/2625372?utm_campaign=crowdfire&utm_content=crowdfire&utm_medium=social&utm_source=twitter")
+	suite.Equal(cleanedURL.String(), "https://www.washingtonexaminer.com/chris-matthews-trump-russia-collusion-theory-came-apart-with-comey-testimony/article/2625372")
+	suite.Equal(finalURL.String(), cleanedURL.String(), "finalURL should be same as cleanedURL")
+
+	suite.NotNil(hr.ResourceContent(), "Content should be available")
+
+	err := suite.harvested.Serialize(suite)
+	suite.NoError(err, "Serialization should have occurred without error")
+
+	markdown, found := suite.markdown[finalURL.String()]
+	suite.True(found, "Markdown should have been serialized")
+	suite.Equal(markdown.String(), "test")
 }
 
 func (suite *ResourceSuite) TestResolvedURLNotCleaned() {
@@ -147,7 +208,7 @@ func (suite *ResourceSuite) TestResolvedURLNotCleaned() {
 	suite.Equal(finalURL.String(), resolvedURL.String(), "finalURL should be same as resolvedURL")
 	suite.Nil(cleanedURL, "cleanedURL should be empty")
 
-	content := hr.Content()
+	content := hr.ResourceContent()
 	suite.NotNil(content, "The destination content should be available")
 	suite.True(content.IsValid(), "The destination content should be valid")
 	suite.True(content.IsHTML(), "The destination content should be HTML")
@@ -168,7 +229,7 @@ func (suite *ResourceSuite) TestResolvedDocumentURLNotCleaned() {
 	suite.Equal(finalURL.String(), resolvedURL.String(), "finalURL should be same as resolvedURL")
 	suite.Nil(cleanedURL, "cleanedURL should be empty")
 
-	content := hr.Content()
+	content := hr.ResourceContent()
 	suite.NotNil(content, "The destination content should be available")
 	suite.True(content.IsValid(), "The destination content should be valid")
 	suite.True(content.WasDownloaded(), "Because the destination wasn't HTML, it should have been downloaded")

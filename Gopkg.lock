@@ -27,6 +27,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/ericaro/frontmatter"
+  packages = ["."]
+  revision = "9fedef9406e420da012d078cd83645bbac08f291"
+
+[[projects]]
+  branch = "master"
   name = "github.com/julianshen/go-readability"
   packages = ["."]
   revision = "accf5123e28378bd35e0a92815d24a8990352fcb"
@@ -98,6 +104,12 @@
   version = "v1.0.5"
 
 [[projects]]
+  name = "gopkg.in/yaml.v2"
+  packages = ["."]
+  revision = "5420a8b6744d3b0345ab293f6fcba19c978f1183"
+  version = "v2.2.1"
+
+[[projects]]
   name = "mvdan.cc/xurls"
   packages = ["."]
   revision = "d315b61cf6727664f310fa87b3197e9faf2a8513"
@@ -106,6 +118,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "bea14ee3a56fcd00e8972536ffd82bbde6bf9b403810dfaa93c5b538b98d6219"
+  inputs-digest = "02d2baba0bbad736416e0b989c8c64a66142f89a5c531f89d71c5583b33194d0"
   solver-name = "gps-cdcl"
   solver-version = 1

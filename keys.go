@@ -1,8 +1,8 @@
 package harvester
 
 import (
+	"fmt"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 
@@ -14,14 +14,19 @@ import (
 // Keys allow the URL to be identified in a database, key value store, etc.
 type HarvestedResourceKeys struct {
 	hr       *HarvestedResource
-	uniqueID string
+	uniqueID uint32
 	pageInfo *og.PageInfo
 	piError  error
 }
 
 // UniqueID returns the unique identifier based on key searching algorithm
-func (keys *HarvestedResourceKeys) UniqueID() string {
+func (keys *HarvestedResourceKeys) UniqueID() uint32 {
 	return keys.uniqueID
+}
+
+// UniqueIDText returns a unique identity key formatted as requested
+func (keys *HarvestedResourceKeys) UniqueIDText(format string) string {
+	return fmt.Sprintf(format, keys.uniqueID)
 }
 
 // IsValid returns true if there are no errors
@@ -38,16 +43,15 @@ func (keys *HarvestedResourceKeys) Slug() string {
 }
 
 // KeyExists is a function passed in that checks whether a key already exists
-type KeyExists func(key string, random uint32, try int) bool
+type KeyExists func(random uint32, try int) bool
 
 // GenerateUniqueID generates a unique identifier for this resource
-func generateUniqueID(prefix string, existsFn KeyExists) string {
+func generateUniqueID(existsFn KeyExists) uint32 {
 	nconflict := 0
 	for i := 0; i < 10000; i++ {
-		nextInt, nextSuffix := nextSuffix()
-		name := prefix + nextSuffix
-		if !existsFn(name, nextInt, i) {
-			return name
+		nextInt := nextRandomNumber()
+		if !existsFn(nextInt, i) {
+			return nextInt
 		}
 
 		if nconflict++; nconflict > 10 {
@@ -58,15 +62,14 @@ func generateUniqueID(prefix string, existsFn KeyExists) string {
 	}
 
 	// give up after max tries, not much we can do
-	_, nextSuffix := nextSuffix()
-	return prefix + nextSuffix
+	return nextRandomNumber()
 }
 
-// CreateKeys returns a new resource keys object
-func CreateKeys(hr *HarvestedResource, uniqueIDPrefix string, existsFn KeyExists) *HarvestedResourceKeys {
+// CreateHarvestedResourceKeys returns a new resource keys object
+func CreateHarvestedResourceKeys(hr *HarvestedResource, existsFn KeyExists) *HarvestedResourceKeys {
 	result := new(HarvestedResourceKeys)
 	result.hr = hr
-	result.uniqueID = generateUniqueID(uniqueIDPrefix, existsFn)
+	result.uniqueID = generateUniqueID(existsFn)
 	// TODO this does an extra HTTP get, instead we should re-use a downloaded HTML
 	result.pageInfo, result.piError = og.GetPageInfoFromUrl(hr.finalURL.String())
 	return result
@@ -80,7 +83,7 @@ func reseed() uint32 {
 	return uint32(time.Now().UnixNano() + int64(os.Getpid()))
 }
 
-func nextSuffix() (uint32, string) {
+func nextRandomNumber() uint32 {
 	randmu.Lock()
 	r := rand
 	if r == 0 {
@@ -89,6 +92,5 @@ func nextSuffix() (uint32, string) {
 	r = r*1664525 + 1013904223 // constants from Numerical Recipes
 	rand = r
 	randmu.Unlock()
-	next := 1e9 + r%1e9
-	return next, strconv.Itoa(int(next))[1:]
+	return 1e9 + r%1e9
 }

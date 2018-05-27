@@ -1,10 +1,13 @@
 package harvester
 
 import (
+	"io"
 	"mime"
 	"net/http"
 	"net/url"
 	"regexp"
+	"text/template"
+	"time"
 
 	"go.uber.org/zap"
 	"mvdan.cc/xurls"
@@ -33,13 +36,73 @@ type ContentHarvester struct {
 	followHTMLRedirects bool
 	ignoreResourceRule  IgnoreDiscoveredResourceRule
 	cleanResourceRule   CleanDiscoveredResourceRule
-	contentEncountered  []*Content
+	contentEncountered  []*HarvestedResourceContent
 }
 
 // The HarvestedResources is the list of URLs discovered in a piece of content
 type HarvestedResources struct {
-	// TODO remove duplicates in case the same resource is included more than once
+	Content   string
 	Resources []*HarvestedResource
+}
+
+// HarvestedResourcesSerializer manages the writing of harvested resources to storage
+type HarvestedResourcesSerializer interface {
+	GetHarvestedResourceSerializationTemplate() (*template.Template, error)
+	CreateHarvestedResourceSerializationKeys(*HarvestedResource) *HarvestedResourceKeys
+	GetHarvestedResourceSerializationParams(*HarvestedResourceKeys) *map[string]interface{}
+	GetHarvestedResourceSerializationWriter(*HarvestedResourceKeys) io.Writer
+}
+
+// Serialize writes harvested content out to a storage device
+func (r *HarvestedResources) Serialize(serializer HarvestedResourcesSerializer) error {
+	t, err := serializer.GetHarvestedResourceSerializationTemplate()
+	if err != nil {
+		return err
+	}
+
+	for _, hr := range r.Resources {
+		keys := serializer.CreateHarvestedResourceSerializationKeys(hr)
+		writer := serializer.GetHarvestedResourceSerializationWriter(keys)
+		params := serializer.GetHarvestedResourceSerializationParams(keys)
+
+		isURLValid, isDestValid := hr.IsValid()
+		if !isURLValid || !isDestValid {
+			continue
+		}
+
+		isIgnored, _ := hr.IsIgnored()
+		if isIgnored {
+			continue
+		}
+
+		isCleaned, _ := hr.IsCleaned()
+		finalURL, resolvedURL, cleanedURL := hr.GetURLs()
+
+		err := t.Execute(writer, struct {
+			Content     string
+			Resource    *HarvestedResource
+			HarvestedOn time.Time
+			IsCleaned   bool
+			FinalURL    string
+			ResolvedURL string
+			CleanedURL  string
+			Params      *map[string]interface{}
+		}{
+			r.Content,
+			hr,
+			hr.harvestedDate,
+			isCleaned,
+			finalURL.String(),
+			resolvedURL.String(),
+			cleanedURL.String(),
+			params,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // MakeContentHarvester prepares a content harvester
@@ -59,8 +122,8 @@ func (h *ContentHarvester) Close() {
 }
 
 // detectContentType will figure out what kind of destination content we're dealing with
-func (h *ContentHarvester) detectContent(url *url.URL, resp *http.Response) *Content {
-	result := new(Content)
+func (h *ContentHarvester) detectResourceContent(url *url.URL, resp *http.Response) *HarvestedResourceContent {
+	result := new(HarvestedResourceContent)
 	h.contentEncountered = append(h.contentEncountered, result)
 	result.URL = url
 	result.ContentType = resp.Header.Get("Content-Type")
@@ -83,10 +146,17 @@ func (h *ContentHarvester) detectContent(url *url.URL, resp *http.Response) *Con
 // HarvestResources discovers URLs within content and returns what was found
 func (h *ContentHarvester) HarvestResources(content string) *HarvestedResources {
 	result := new(HarvestedResources)
+	result.Content = content
+
+	seenUrls := make(map[string]bool)
 	urls := h.discoverURLsRegEx.FindAllString(content, -1)
 	for _, urlText := range urls {
-		res := harvestResource(h, urlText)
+		_, found := seenUrls[urlText]
+		if found {
+			continue
+		}
 
+		res := harvestResource(h, urlText)
 		// check and see if we have an HTML content-based redirect via meta refresh (not HTTP)
 		referredTo := harvestResourceFromReferrer(h, res)
 		if referredTo != nil && h.followHTMLRedirects {
@@ -94,8 +164,8 @@ func (h *ContentHarvester) HarvestResources(content string) *HarvestedResources 
 			res = referredTo
 		}
 
-		// TODO check for duplicates and only append unique discovered URLs
 		result.Resources = append(result.Resources, res)
+		seenUrls[urlText] = true
 	}
 	return result
 }

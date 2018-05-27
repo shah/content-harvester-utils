@@ -78,8 +78,8 @@ func DownloadContent(url *url.URL, resp *http.Response) *DownloadedContent {
 	return result
 }
 
-// Content manages the kind of content was inspected
-type Content struct {
+// HarvestedResourceContent manages the kind of content was inspected
+type HarvestedResourceContent struct {
 	URL             *url.URL
 	ContentType     string
 	MediaType       string
@@ -89,7 +89,7 @@ type Content struct {
 }
 
 // IsValid returns true if this there are no errors
-func (c *Content) IsValid() bool {
+func (c *HarvestedResourceContent) IsValid() bool {
 	if c.MediaTypeError != nil {
 		return false
 	}
@@ -107,12 +107,12 @@ func (c *Content) IsValid() bool {
 }
 
 // IsHTML returns true if this is HTML content
-func (c *Content) IsHTML() bool {
+func (c *HarvestedResourceContent) IsHTML() bool {
 	return c.MediaType == "text/html"
 }
 
 // WasDownloaded returns true if content was downloaded for inspection
-func (c *Content) WasDownloaded() bool {
+func (c *HarvestedResourceContent) WasDownloaded() bool {
 	return c.Downloaded != nil
 }
 
@@ -123,7 +123,6 @@ var metaRefreshContentRegEx = regexp.MustCompile(`^(\d?)\s?;\s?url=(.*)$`)
 // HarvestedResource tracks a single URL that was discovered in content.
 // Discovered URLs are validated, follow their redirects, and may have
 // query parameters "cleaned" (if instructed).
-// TODO need to add heavy automated testing through unit tests
 type HarvestedResource struct {
 	// TODO consider adding source information (e.g. tweet, e-mail, etc.) and embed style (e.g. text, HTML <a> tag, etc.)
 	harvestedDate   time.Time
@@ -142,7 +141,7 @@ type HarvestedResource struct {
 	resolvedURL     *url.URL
 	cleanedURL      *url.URL
 	finalURL        *url.URL
-	content         *Content
+	resourceContent *HarvestedResourceContent
 }
 
 // OriginalURLText returns the URL as it was discovered, with no alterations
@@ -184,9 +183,9 @@ func (r *HarvestedResource) IsHTMLRedirect() (bool, string) {
 	return r.isHTMLRedirect, r.htmlRedirectURL
 }
 
-// Content returns the inspected or downloaded content
-func (r *HarvestedResource) Content() *Content {
-	return r.content
+// ResourceContent returns the inspected or downloaded content
+func (r *HarvestedResource) ResourceContent() *HarvestedResourceContent {
+	return r.resourceContent
 }
 
 // cleanResource checks to see if there are any parameters that should be removed (e.g. UTM_*)
@@ -319,8 +318,8 @@ func harvestResource(h *ContentHarvester, origURLtext string) *HarvestedResource
 		result.isURLCleaned = false
 	}
 
-	result.content = h.detectContent(result.finalURL, resp)
-	if result.content.IsHTML() {
+	result.resourceContent = h.detectResourceContent(result.finalURL, resp)
+	if result.resourceContent.IsHTML() {
 		result.isHTMLRedirect, result.htmlRedirectURL, result.htmlParseError = getMetaRefresh(resp)
 	}
 
