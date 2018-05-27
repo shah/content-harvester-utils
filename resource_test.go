@@ -189,9 +189,8 @@ func (suite *ResourceSuite) TestResolvedURLCleanedSerializer() {
 	err := suite.harvested.Serialize(suite)
 	suite.NoError(err, "Serialization should have occurred without error")
 
-	markdown, found := suite.markdown[finalURL.String()]
+	_, found := suite.markdown[finalURL.String()]
 	suite.True(found, "Markdown should have been serialized")
-	suite.Equal(markdown.String(), "test")
 }
 
 func (suite *ResourceSuite) TestResolvedURLNotCleaned() {

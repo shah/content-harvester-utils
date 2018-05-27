@@ -76,7 +76,7 @@ func (r *HarvestedResources) Serialize(serializer HarvestedResourcesSerializer) 
 		}
 
 		isCleaned, _ := hr.IsCleaned()
-		finalURL, resolvedURL, cleanedURL := hr.GetURLs()
+		finalURL, resolvedURL, _ := hr.GetURLs()
 
 		err := t.Execute(writer, struct {
 			Content     string
@@ -85,7 +85,6 @@ func (r *HarvestedResources) Serialize(serializer HarvestedResourcesSerializer) 
 			IsCleaned   bool
 			FinalURL    string
 			ResolvedURL string
-			CleanedURL  string
 			Params      *map[string]interface{}
 		}{
 			r.Content,
@@ -94,7 +93,6 @@ func (r *HarvestedResources) Serialize(serializer HarvestedResourcesSerializer) 
 			isCleaned,
 			finalURL.String(),
 			resolvedURL.String(),
-			cleanedURL.String(),
 			params,
 		})
 		if err != nil {
