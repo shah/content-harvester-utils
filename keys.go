@@ -19,6 +19,11 @@ type HarvestedResourceKeys struct {
 	piError  error
 }
 
+// HarvestedResource returns the underlying resource the keys were generated for
+func (keys *HarvestedResourceKeys) HarvestedResource() *HarvestedResource {
+	return keys.hr
+}
+
 // UniqueID returns the unique identifier based on key searching algorithm
 func (keys *HarvestedResourceKeys) UniqueID() uint32 {
 	return keys.uniqueID
