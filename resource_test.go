@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -119,7 +120,15 @@ func (suite *ResourceSuite) TestResolvedURLCleanedKeys() {
 	suite.Equal(cleanedURL.String(), "https://www.washingtonexaminer.com/chris-matthews-trump-russia-collusion-theory-came-apart-with-comey-testimony/article/2625372")
 	suite.Equal(finalURL.String(), cleanedURL.String(), "finalURL should be same as cleanedURL")
 
-	keys := CreateKeys(hr)
+	var testRandom uint32
+	var testTry int
+	keys := CreateKeys(hr, "test-", func(name string, random uint32, try int) bool {
+		testRandom = random
+		testTry = try
+		return false
+	})
+	suite.Equal(testTry, 0)
+	suite.Equal(keys.UniqueID(), "test-"+strconv.Itoa(int(testRandom))[1:])
 	suite.Equal(keys.Slug(), "chris-matthews-trump-russia-collusion-theory-came-apart-with-comey-testimony")
 	suite.NotNil(hr.Content(), "Content should be available")
 }
