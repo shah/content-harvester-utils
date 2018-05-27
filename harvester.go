@@ -1,17 +1,18 @@
 package harvester
 
 import (
+	"mime"
+	"net/http"
 	"net/url"
 	"regexp"
 
+	"go.uber.org/zap"
 	"mvdan.cc/xurls"
 )
 
 // TODO use https://github.com/PuerkitoBio/goquery for parsing singe page HTML (similar to cheerio library for Node.js)
 // TODO use https://github.com/gocolly/colly for scraping multiple page HTML sites
 // TODO use https://github.com/andrewstuart/goq for type-safe layer on top of goquery using struct-tag
-// TODO use https://github.com/spf13/afero as a fileSystem abstraction layer in case resources will be stored
-// TODO use https://github.com/h2non/filetype to infer file types checking the magic numbers signature (after downloading the file and keeping it the filesystem)
 // TODO use https://medium.com/@aschers/deploy-machine-learning-models-from-r-research-to-ruby-go-production-with-pmml-b41e79445d3d for scoring content
 
 // IgnoreDiscoveredResourceRule is a rule
@@ -27,10 +28,12 @@ type CleanDiscoveredResourceRule interface {
 
 // ContentHarvester discovers URLs (called "Resources" from the "R" in "URL")
 type ContentHarvester struct {
+	logger              *zap.Logger
 	discoverURLsRegEx   *regexp.Regexp
 	followHTMLRedirects bool
 	ignoreResourceRule  IgnoreDiscoveredResourceRule
 	cleanResourceRule   CleanDiscoveredResourceRule
+	contentEncountered  []*Content
 }
 
 // The HarvestedResources is the list of URLs discovered in a piece of content
@@ -40,12 +43,40 @@ type HarvestedResources struct {
 }
 
 // MakeContentHarvester prepares a content harvester
-func MakeContentHarvester(ignoreResourceRule IgnoreDiscoveredResourceRule, cleanResourceRule CleanDiscoveredResourceRule, followHTMLRedirects bool) *ContentHarvester {
+func MakeContentHarvester(logger *zap.Logger, ignoreResourceRule IgnoreDiscoveredResourceRule, cleanResourceRule CleanDiscoveredResourceRule, followHTMLRedirects bool) *ContentHarvester {
 	result := new(ContentHarvester)
+	result.logger = logger
 	result.discoverURLsRegEx = xurls.Relaxed
 	result.ignoreResourceRule = ignoreResourceRule
 	result.cleanResourceRule = cleanResourceRule
 	result.followHTMLRedirects = followHTMLRedirects
+	return result
+}
+
+// Close will clean up resources, mainly temporary files that were created for downloaded resources
+func (h *ContentHarvester) Close() {
+
+}
+
+// detectContentType will figure out what kind of destination content we're dealing with
+func (h *ContentHarvester) detectContent(url *url.URL, resp *http.Response) *Content {
+	result := new(Content)
+	h.contentEncountered = append(h.contentEncountered, result)
+	result.URL = url
+	result.ContentType = resp.Header.Get("Content-Type")
+	if len(result.ContentType) > 0 {
+		result.MediaType, result.MediaTypeParams, result.MediaTypeError = mime.ParseMediaType(result.ContentType)
+		if result.MediaTypeError != nil {
+			return result
+		}
+		if result.IsHTML() {
+			return result
+		}
+	}
+
+	// If we get to here it means that we need to download the content to inspect it.
+	// We download it first because it's possible we want to retain it for later use.
+	result.Downloaded = DownloadContent(url, resp)
 	return result
 }
 

@@ -2,14 +2,119 @@ package harvester
 
 import (
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
+	"path"
 	"regexp"
 	"strings"
 	"time"
 
 	"golang.org/x/net/html"
+	filetype "gopkg.in/h2non/filetype.v1"
+	"gopkg.in/h2non/filetype.v1/types"
 )
+
+// DownloadedContent manages any content that was downloaded for further inspection
+type DownloadedContent struct {
+	URL           *url.URL
+	DestPath      string
+	DownloadError error
+	FileTypeError error
+	FileType      types.Type
+}
+
+// Delete removes the file that was downloaded
+func (dc *DownloadedContent) Delete() {
+	os.Remove(dc.DestPath)
+}
+
+// DownloadContent will download a url to a local file. It's efficient because it will
+// write as it downloads and not load the whole file into memory.
+func DownloadContent(url *url.URL, resp *http.Response) *DownloadedContent {
+	destFile, err := ioutil.TempFile(os.TempDir(), "ContentHarvester-")
+
+	result := new(DownloadedContent)
+	result.URL = url
+	if err != nil {
+		result.DownloadError = err
+		return result
+	}
+
+	defer destFile.Close()
+	defer resp.Body.Close()
+	result.DestPath = destFile.Name()
+	_, err = io.Copy(destFile, resp.Body)
+	if err != nil {
+		result.DownloadError = err
+		return result
+	}
+	destFile.Close()
+
+	// Open the just-downloaded file again since it was closed already
+	file, err := os.Open(result.DestPath)
+	if err != nil {
+		result.FileTypeError = err
+		return result
+	}
+
+	// We only have to pass the file header = first 261 bytes
+	head := make([]byte, 261)
+	file.Read(head)
+	file.Close()
+
+	result.FileType, result.FileTypeError = filetype.Match(head)
+	if result.FileTypeError == nil {
+		// change the extension so that it matches the file type we found
+		currentPath := result.DestPath
+		currentExtension := path.Ext(currentPath)
+		newPath := currentPath[0:len(currentPath)-len(currentExtension)] + "." + result.FileType.Extension
+		os.Rename(currentPath, newPath)
+		result.DestPath = newPath
+	}
+
+	return result
+}
+
+// Content manages the kind of content was inspected
+type Content struct {
+	URL             *url.URL
+	ContentType     string
+	MediaType       string
+	MediaTypeParams map[string]string
+	MediaTypeError  error
+	Downloaded      *DownloadedContent
+}
+
+// IsValid returns true if this there are no errors
+func (c *Content) IsValid() bool {
+	if c.MediaTypeError != nil {
+		return false
+	}
+
+	if c.Downloaded != nil {
+		if c.Downloaded.DownloadError != nil {
+			return false
+		}
+		if c.Downloaded.FileTypeError != nil {
+			return false
+		}
+	}
+
+	return true
+}
+
+// IsHTML returns true if this is HTML content
+func (c *Content) IsHTML() bool {
+	return c.MediaType == "text/html"
+}
+
+// WasDownloaded returns true if content was downloaded for inspection
+func (c *Content) WasDownloaded() bool {
+	return c.Downloaded != nil
+}
 
 // metaRefreshContentRegEx is used to match the 'content' attribute in a tag like this:
 //   <meta http-equiv="refresh" content="2;url=https://www.google.com">
@@ -30,14 +135,14 @@ type HarvestedResource struct {
 	isURLIgnored    bool
 	ignoreReason    string
 	isURLCleaned    bool
-	destContentType string
-	destContentDate time.Time
+	isURLAttachment bool
 	isHTMLRedirect  bool
 	htmlRedirectURL string
 	htmlParseError  error
 	resolvedURL     *url.URL
 	cleanedURL      *url.URL
 	finalURL        *url.URL
+	content         *Content
 }
 
 // OriginalURLText returns the URL as it was discovered, with no alterations
@@ -79,14 +184,9 @@ func (r *HarvestedResource) IsHTMLRedirect() (bool, string) {
 	return r.isHTMLRedirect, r.htmlRedirectURL
 }
 
-// DestinationContentType returns the MIME type of the destination
-func (r *HarvestedResource) DestinationContentType() string {
-	return r.destContentType
-}
-
-// Dates returns the dates of creation and last modification
-func (r *HarvestedResource) Dates() (time.Time, time.Time) {
-	return r.harvestedDate, r.destContentDate
+// Content returns the inspected or downloaded content
+func (r *HarvestedResource) Content() *Content {
+	return r.content
 }
 
 // cleanResource checks to see if there are any parameters that should be removed (e.g. UTM_*)
@@ -198,8 +298,6 @@ func harvestResource(h *ContentHarvester, origURLtext string) *HarvestedResource
 		return result
 	}
 
-	result.destContentType = resp.Header.Get("Content-type")
-	result.destContentDate, _ = http.ParseTime(resp.Header.Get("Last-Modified"))
 	result.resolvedURL = resp.Request.URL
 	result.finalURL = result.resolvedURL
 	ignoreURL, ignoreReason := h.ignoreResourceRule.IgnoreDiscoveredResource(result.resolvedURL)
@@ -221,7 +319,10 @@ func harvestResource(h *ContentHarvester, origURLtext string) *HarvestedResource
 		result.isURLCleaned = false
 	}
 
-	result.isHTMLRedirect, result.htmlRedirectURL, result.htmlParseError = getMetaRefresh(resp)
+	result.content = h.detectContent(result.finalURL, resp)
+	if result.content.IsHTML() {
+		result.isHTMLRedirect, result.htmlRedirectURL, result.htmlParseError = getMetaRefresh(resp)
+	}
 
 	// TODO once the URL is cleaned, double-check the cleaned URL to see if it's a valid destination; if not, revert to non-cleaned version
 	// this could be done recursively here or by the outer function. This is necessary because "cleaning" a URL and removing params might

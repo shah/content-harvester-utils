@@ -54,6 +54,31 @@
   version = "v1.2.1"
 
 [[projects]]
+  name = "go.uber.org/atomic"
+  packages = ["."]
+  revision = "1ea20fb1cbb1cc08cbd0d913a96dead89aa18289"
+  version = "v1.3.2"
+
+[[projects]]
+  name = "go.uber.org/multierr"
+  packages = ["."]
+  revision = "3c4937480c32f4c13a875a1829af76c98ca3d40a"
+  version = "v1.1.0"
+
+[[projects]]
+  name = "go.uber.org/zap"
+  packages = [
+    ".",
+    "buffer",
+    "internal/bufferpool",
+    "internal/color",
+    "internal/exit",
+    "zapcore"
+  ]
+  revision = "eeedf312bc6c57391d84767a4cd413f02a917974"
+  version = "v1.8.0"
+
+[[projects]]
   branch = "master"
   name = "golang.org/x/net"
   packages = [
@@ -61,6 +86,16 @@
     "html/atom"
   ]
   revision = "dfa909b99c79129e1100513e5cd36307665e5723"
+
+[[projects]]
+  name = "gopkg.in/h2non/filetype.v1"
+  packages = [
+    ".",
+    "matchers",
+    "types"
+  ]
+  revision = "cc14fdc9ca0e4c2bafad7458f6ff79fd3947cfbb"
+  version = "v1.0.5"
 
 [[projects]]
   name = "mvdan.cc/xurls"
@@ -71,6 +106,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "1c21799829d98d5ce32a3dedbbadf8f5609532436691b151a41d65575a4ebb21"
+  inputs-digest = "bea14ee3a56fcd00e8972536ffd82bbde6bf9b403810dfaa93c5b538b98d6219"
   solver-name = "gps-cdcl"
   solver-version = 1
