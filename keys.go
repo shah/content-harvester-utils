@@ -76,7 +76,13 @@ func CreateHarvestedResourceKeys(hr *HarvestedResource, existsFn KeyExists) *Har
 	result.hr = hr
 	result.uniqueID = generateUniqueID(existsFn)
 	// TODO this does an extra HTTP get, instead we should re-use a downloaded HTML
-	result.pageInfo, result.piError = og.GetPageInfoFromUrl(hr.finalURL.String())
+	if hr.finalURL != nil {
+		result.pageInfo, result.piError = og.GetPageInfoFromUrl(hr.finalURL.String())
+	} else {
+		result.pageInfo = nil
+		result.piError = fmt.Errorf("HR %s finalURL is null", hr.OriginalURLText())
+	}
+
 	return result
 }
 
