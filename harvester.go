@@ -39,45 +39,58 @@ type ContentHarvester struct {
 	contentEncountered  []*HarvestedResourceContent
 }
 
-// The HarvestedResources is the list of URLs discovered in a piece of content
+// HarvestedResources is the list of URLs discovered in a piece of content
 type HarvestedResources struct {
 	Content   string
 	Resources []*HarvestedResource
 }
 
-// HarvestedResourcesSerializer manages the writing of harvested resources to storage
-type HarvestedResourcesSerializer interface {
-	GetHarvestedResourceSerializationTemplate() (*template.Template, error)
-	CreateHarvestedResourceSerializationKeys(*HarvestedResource) *HarvestedResourceKeys
-	GetHarvestedResourceSerializationParams(*HarvestedResourceKeys) *map[string]interface{}
-	GetHarvestedResourceSerializationWriter(*HarvestedResourceKeys) io.Writer
+// HarvestedResourcesSerializer contains callbacks for custom serialization of resources and content
+type HarvestedResourcesSerializer struct {
+	GetKeys              func(*HarvestedResource) *HarvestedResourceKeys
+	GetTemplate          func(*HarvestedResourceKeys) (*template.Template, error)
+	GetTemplateParams    func(*HarvestedResourceKeys) *map[string]interface{}
+	GetWriter            func(*HarvestedResourceKeys) io.Writer
+	HandleInvalidURL     func(*HarvestedResource)
+	HandleInvalidURLDest func(*HarvestedResource)
+	HandleIgnoredURL     func(*HarvestedResource)
 }
 
 // Serialize writes harvested content out to a storage device
 func (r *HarvestedResources) Serialize(serializer HarvestedResourcesSerializer) error {
-	t, err := serializer.GetHarvestedResourceSerializationTemplate()
-	if err != nil {
-		return err
-	}
-
 	for _, hr := range r.Resources {
-		keys := serializer.CreateHarvestedResourceSerializationKeys(hr)
-		writer := serializer.GetHarvestedResourceSerializationWriter(keys)
-		params := serializer.GetHarvestedResourceSerializationParams(keys)
-
 		isURLValid, isDestValid := hr.IsValid()
-		if !isURLValid || !isDestValid {
+		if !isURLValid {
+			if serializer.HandleInvalidURL != nil {
+				serializer.HandleInvalidURL(hr)
+			}
+			continue
+		}
+		if !isDestValid {
+			if serializer.HandleInvalidURLDest != nil {
+				serializer.HandleInvalidURLDest(hr)
+			}
 			continue
 		}
 
 		isIgnored, _ := hr.IsIgnored()
 		if isIgnored {
+			if serializer.HandleIgnoredURL != nil {
+				serializer.HandleIgnoredURL(hr)
+			}
 			continue
 		}
 
+		keys := serializer.GetKeys(hr)
+		t, tmplErr := serializer.GetTemplate(keys)
+		if tmplErr != nil {
+			return tmplErr
+		}
+		params := serializer.GetTemplateParams(keys)
+		writer := serializer.GetWriter(keys)
+
 		isCleaned, _ := hr.IsCleaned()
 		finalURL, resolvedURL, _ := hr.GetURLs()
-
 		err := t.Execute(writer, struct {
 			Content     string
 			Resource    *HarvestedResource
@@ -86,6 +99,7 @@ func (r *HarvestedResources) Serialize(serializer HarvestedResourcesSerializer) 
 			FinalURL    string
 			ResolvedURL string
 			Params      *map[string]interface{}
+			Slug        string
 		}{
 			r.Content,
 			hr,
@@ -94,6 +108,7 @@ func (r *HarvestedResources) Serialize(serializer HarvestedResourcesSerializer) 
 			finalURL.String(),
 			resolvedURL.String(),
 			params,
+			keys.Slug(),
 		})
 		if err != nil {
 			return err

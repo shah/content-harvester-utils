@@ -16,36 +16,11 @@ import (
 
 type ResourceSuite struct {
 	suite.Suite
-	logger    *zap.Logger
-	ch        *ContentHarvester
-	harvested *HarvestedResources
-	template  *template.Template
-	markdown  map[string]*strings.Builder
-}
-
-func (suite *ResourceSuite) GetHarvestedResourceSerializationTemplate() (*template.Template, error) {
-	return suite.template, nil
-}
-
-func (suite *ResourceSuite) CreateHarvestedResourceSerializationKeys(hr *HarvestedResource) *HarvestedResourceKeys {
-	return CreateHarvestedResourceKeys(hr, func(random uint32, try int) bool {
-		return false
-	})
-}
-
-func (suite *ResourceSuite) GetHarvestedResourceSerializationParams(*HarvestedResourceKeys) *map[string]interface{} {
-	result := make(map[string]interface{})
-	result["ProvenanceType"] = "tweet"
-	return &result
-}
-
-func (suite *ResourceSuite) GetHarvestedResourceSerializationWriter(keys *HarvestedResourceKeys) io.Writer {
-	markdown, found := suite.markdown[keys.hr.finalURL.String()]
-	if !found {
-		markdown = new(strings.Builder)
-		suite.markdown[keys.hr.finalURL.String()] = markdown
-	}
-	return markdown
+	logger     *zap.Logger
+	ch         *ContentHarvester
+	harvested  *HarvestedResources
+	markdown   map[string]*strings.Builder
+	serializer HarvestedResourcesSerializer
 }
 
 func (suite *ResourceSuite) SetupSuite() {
@@ -56,12 +31,37 @@ func (suite *ResourceSuite) SetupSuite() {
 	suite.logger = logger
 	suite.ch = MakeContentHarvester(suite.logger, defaultIgnoreURLsRegExList, defaultCleanURLsRegExList, false)
 
-	t, err := template.ParseFiles("serialize.md.tmpl")
-	if err != nil {
-		panic(err)
+	tmpl, tmplErr := template.ParseFiles("serialize.md.tmpl")
+	if tmplErr != nil {
+		log.Fatalf("can't initialize template: %v", err)
 	}
-	suite.template = t
 	suite.markdown = make(map[string]*strings.Builder)
+	suite.serializer = HarvestedResourcesSerializer{
+		GetKeys: func(hr *HarvestedResource) *HarvestedResourceKeys {
+			return CreateHarvestedResourceKeys(hr, func(random uint32, try int) bool {
+				return false
+			})
+		},
+		GetTemplate: func(keys *HarvestedResourceKeys) (*template.Template, error) {
+			return tmpl, nil
+		},
+		GetTemplateParams: func(keys *HarvestedResourceKeys) *map[string]interface{} {
+			result := make(map[string]interface{})
+			result["ProvenanceType"] = "tweet"
+			return &result
+		},
+		GetWriter: func(keys *HarvestedResourceKeys) io.Writer {
+			markdown, found := suite.markdown[keys.hr.finalURL.String()]
+			if !found {
+				markdown = new(strings.Builder)
+				suite.markdown[keys.hr.finalURL.String()] = markdown
+			}
+			return markdown
+		},
+		HandleInvalidURL:     nil,
+		HandleInvalidURLDest: nil,
+		HandleIgnoredURL:     nil,
+	}
 }
 
 func (suite *ResourceSuite) harvestSingleURLFromMockTweet(text string, msgAndArgs ...interface{}) *HarvestedResource {
@@ -186,7 +186,7 @@ func (suite *ResourceSuite) TestResolvedURLCleanedSerializer() {
 
 	suite.NotNil(hr.ResourceContent(), "Content should be available")
 
-	err := suite.harvested.Serialize(suite)
+	err := suite.harvested.Serialize(suite.serializer)
 	suite.NoError(err, "Serialization should have occurred without error")
 
 	_, found := suite.markdown[finalURL.String()]
